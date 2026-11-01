@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>clowder — the lab at a glance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='cat.svg') }}">
+</head>
+<body>
+<header class="bar">
+  <span class="mark"></span>
+  <span class="word">CLOWDER</span>
+  <span class="sub">vantage · warden · bastet · whisker</span>
+  <span class="meta" id="stamp">re-read on every load · auto-refresh {{ refresh }}s</span>
+</header>
+
+<main>
+  <section class="strip">
+    {% for tool in tools %}
+    <div class="tool {{ 'on' if tool.installed else 'off' }}">
+      <span class="dot"></span>
+      <span class="name">{{ tool.key }}</span>
+      <span class="does">{{ tool.title }}</span>
+      <span class="state">{{ 'installed' if tool.installed else 'missing' }}</span>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="attention">
+    <h2>Needs a look</h2>
+    {% set items = lab.attention() %}
+    {% if items %}
+    <table class="data">
+      <thead><tr><th>state</th><th>where</th><th>what</th></tr></thead>
+      <tbody>
+      {% for state, where, detail in items %}
+        <tr>
+          <td><span class="chip chip-{{ state }}">{{ state }}</span></td>
+          <td class="mono">{{ where }}</td>
+          <td>{{ detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Nothing needs a look. That is either good news or a tool that has not run.</p>
+    {% endif %}
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <header><h3>vantage</h3><span class="kicker">last scan</span></header>
+      {% if lab.scan %}
+        <p class="big">{{ lab.scan.score }}<span>/100</span></p>
+        <p class="grade g-{{ lab.scan.grade }}">{{ lab.scan.grade }}</p>
+        <dl>
+          <div><dt>target</dt><dd class="mono">{{ lab.scan.target }}</dd></div>
+          <div><dt>strategy</dt><dd>{{ lab.scan.strategy }}</dd></div>
+          <div><dt>surface</dt><dd>{{ lab.scan.hosts }} host(s) · {{ lab.scan.ports }} open ports</dd></div>
+          <div><dt>findings</dt><dd>{{ lab.scan.total }} · {{ lab.scan.confirmed }} confirmed</dd></div>
+          <div><dt>when</dt><dd>{{ lab.scan.started[11:16] }} · {{ age(lab.scan.started) }}</dd></div>
+        </dl>
+        <div class="sevbar">
+          {% for sev in ['critical','high','medium','low','info'] %}
+            {% set n = lab.scan.counts.get(sev, 0) %}
+            <span class="seg s-{{ sev }}" style="flex: {{ n if n else 0.08 }}" title="{{ n }} {{ sev }}"></span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">No scan yet.<br><code>clowder vantage scan &lt;target&gt;</code></p>
+      {% endif %}
+    </article>
+
+    <article class="card">
+      <header><h3>warden</h3><span class="kicker">last check</span></header>
+      {% if lab.health %}
+        <p class="big">{{ lab.health.ok }}<span>/{{ lab.health.services }}</span></p>
+        <p class="grade {{ 'g-high' if lab.health.fail else ('g-medium' if lab.health.warn else 'g-info') }}">
+          {{ lab.health.fail }} failing · {{ lab.health.warn }} warning
+        </p>
+        <dl>
+          <div><dt>inventory</dt><dd class="mono">{{ lab.health.inventory.split('/')[-1] }}</dd></div>
+          <div><dt>run</dt><dd class="mono">{{ lab.health.run_id }}</dd></div>
+          <div><dt>when</dt><dd>{{ lab.health.started[11:16] }} · {{ age(lab.health.started) }}</dd></div>
+        </dl>
+        {% if lab.health.attention %}
+        <ul class="mini">
+          {% for row in lab.health.attention[:5] %}
+          <li><span class="chip chip-{{ row.status }}">{{ row.status }}</span> {{ row.service }}
+            <em title="{{ row.detail }}">{{ row.detail[:46] }}{% if row.detail|length > 46 %}…{% endif %}</em></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      {% else %}
+        <p class="empty">No check yet.<br><code>clowder warden check</code></p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section>
+    <h2>Cases <span class="count">{{ lab.cases|length }}</span></h2>
+    {% if lab.cases %}
+    <table class="data">
+      <thead><tr><th>case</th><th>severity</th><th>state</th><th>title</th><th class="r">notes</th><th>updated</th></tr></thead>
+      <tbody>
+      {% for case in lab.cases %}
+        <tr>
+          <td class="mono">{{ case.case_id }}</td>
+          <td><span class="chip chip-{{ case.severity }}">{{ case.severity }}</span></td>
+          <td>{{ case.status }}</td>
+          <td>{{ case.title }}</td>
+          <td class="r">{{ case.events }}</td>
+          <td class="dim">{{ age(case.updated) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No cases yet.<br><code>clowder bastet case add …</code></p>
+    {% endif %}
+  </section>
+
+  <section class="note">
+    <h2>Read on demand</h2>
+    <p>
+      Whisker keeps nothing: it analyses a capture when you give it one. Nothing on this
+      page is stored twice — every number above is read from the tool that produced it,
+      at page load.
+    </p>
+    <pre class="code">clowder run whisker capture.pcap        read the wire
+clowder run whisker web capture.pcap    its own view
+clowder run vantage scan 10.10.20.101 --scope scope.json --authorized</pre>
+  </section>
+</main>
+
+<footer>
+  <span>clowder {{ version }}</span>
+  <span>reads the tools' stores · <a href="/api/status">json</a></span>
+</footer>
+
+<script>
+  // re-read the tools' stores by reloading: nothing is cached server-side either
+  setTimeout(function () { location.reload(); }, {{ refresh }} * 1000);
+</script>
+</body>
+</html>
